@@ -24,7 +24,6 @@ type Report = {
   contacts: Contacts;
   research: Research;
   pagesRead?: { kind: string; url: string }[];
-  cached?: boolean;
   error?: string;
 };
 
@@ -226,8 +225,8 @@ function Result({ report }: { report: Report }) {
         published. The rest is a read of{" "}
         {report.pagesRead?.length ?? "a few"} page
         {(report.pagesRead?.length ?? 2) === 1 ? "" : "s"} of their own marketing, so treat it as
-        their claims rather than as facts.
-        {report.cached && " Served from an earlier lookup of this domain."}
+        their claims rather than as facts. A company is re-read at most once a day, so this may
+        be up to a day old.
       </p>
     </div>
   );

@@ -1,45 +1,38 @@
 import { NextResponse } from "next/server";
-import { collectPages, normaliseUrl, LookupError } from "@/lib/fetch-site";
-import { extractContacts, type Contacts } from "@/lib/contacts";
-import { estimateCostInr, research, type Research } from "@/lib/research";
+import { normaliseUrl, LookupError } from "@/lib/fetch-site";
+import { canonicalOrigin, lookupCompany } from "@/lib/lookup";
 
 /* ===============================================================
    LOOKUP
    ===============================================================
-   One URL in, one report out.
+   One URL in, one report out. The reading and the summarising live
+   in lookup.ts behind a durable cache; what is left here is the two
+   limits and the error handling.
 
-   Cached by hostname. Looking the same company up twice in an
-   afternoon is the normal way this gets used — you check it, you
-   come back to it, you send it to yourself — and none of those
-   should cost anything after the first.
+   The limits are checked BEFORE the cached call, which means a
+   repeat lookup of an already-read company still costs you one of
+   your hourly allowance even though it costs no money. That is the
+   wrong way round, and it is deliberate: telling a hit from a miss
+   would mean reaching inside the cache, and a limit that can be
+   reset by asking for the same domain twice is not a limit. The
+   allowance is set high enough that it does not bite.
    =============================================================== */
 
-const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
-
-/* ---------------------------------------------------------------
-   Two limits, because they stop different things.
-
-   The per-visitor one stops somebody sitting there pasting domains.
-   The daily one stops a hundred visitors doing it once each — which
-   the first limit would happily allow, and which costs exactly as
-   much.
-
-   This matters more here than it looks: the Anthropic account behind
-   this is the same one Eloquence uses, under one monthly ceiling. An
-   afternoon of this draining that ceiling does not just stop this
-   site, it stops meal plans being generated on the other one.
-
-   Both counters live in memory, so a serverless instance that gets
-   recycled forgets. That makes them a brake, not a wall — the wall
-   is the spend limit on the account itself.
-   --------------------------------------------------------------- */
-const PER_VISITOR_LIMIT = 5;
+/*
+ * Two limits, because they stop different things. Per-visitor stops
+ * one person pasting domains all afternoon; the daily one stops fifty
+ * people doing it once each, which the first would happily allow and
+ * which costs exactly as much.
+ *
+ * The daily number is not a guess. A lookup costs roughly Rs 4, the
+ * account behind this has a monthly ceiling, and Eloquence draws on
+ * the same one — so this is set to what this site can spend per day
+ * without being able to empty the month on its own.
+ */
+const PER_VISITOR_LIMIT = 20;
 const PER_VISITOR_WINDOW_MS = 60 * 60 * 1000;
-const DAILY_LIMIT = 60;
+const DAILY_LIMIT = 25;
 
-type Report = { url: string; contacts: Contacts; research: Research };
-
-const cache = new Map<string, { at: number; report: Report }>();
 const visits = new Map<string, number[]>();
 const spentToday: { day: string; count: number } = { day: "", count: 0 };
 
@@ -75,20 +68,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Could not read that request." }, { status: 400 });
   }
 
-  let url: string;
+  let origin: string;
   try {
-    url = normaliseUrl(String(body.url ?? ""));
+    origin = canonicalOrigin(normaliseUrl(String(body.url ?? "")));
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof LookupError ? e.message : "That address could not be read." },
       { status: 400 },
     );
-  }
-
-  const key = new URL(url).hostname.replace(/^www\./, "");
-  const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
-    return NextResponse.json({ ...hit.report, cached: true });
   }
 
   if (!process.env.ANTHROPIC_API_KEY) {
@@ -98,10 +85,6 @@ export async function POST(request: Request) {
     );
   }
 
-  /*
-   * Checked after the cache, on purpose. A repeat lookup of a domain
-   * already read costs nothing, so it should not count against anyone.
-   */
   if (overVisitorLimit(visitorKey(request))) {
     return NextResponse.json(
       {
@@ -122,29 +105,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const pages = await collectPages(url);
-
-    /*
-     * Contacts first, and independently. They come from parsing, so
-     * they are already correct — and if Claude fails, a report with
-     * real contact details and no summary is still worth having.
-     */
-    const contacts = extractContacts(pages);
-
-    const { research: found, usage } = await research(pages);
-
-    console.log(
-      `[lookup] ${key} · ${pages.length} pages · ${usage.inputTokens} in / ${usage.outputTokens} out · ~Rs ${estimateCostInr(usage).toFixed(2)}`,
-    );
-
-    const report: Report = { url, contacts, research: found };
-    cache.set(key, { at: Date.now(), report });
-
-    return NextResponse.json({
-      ...report,
-      pagesRead: pages.map((p) => ({ kind: p.kind, url: p.url })),
-      cached: false,
-    });
+    return NextResponse.json(await lookupCompany(origin));
   } catch (e) {
     if (e instanceof LookupError) {
       return NextResponse.json({ error: e.message }, { status: 502 });
