@@ -16,9 +16,56 @@ import { estimateCostInr, research, type Research } from "@/lib/research";
 
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 
+/* ---------------------------------------------------------------
+   Two limits, because they stop different things.
+
+   The per-visitor one stops somebody sitting there pasting domains.
+   The daily one stops a hundred visitors doing it once each — which
+   the first limit would happily allow, and which costs exactly as
+   much.
+
+   This matters more here than it looks: the Anthropic account behind
+   this is the same one Eloquence uses, under one monthly ceiling. An
+   afternoon of this draining that ceiling does not just stop this
+   site, it stops meal plans being generated on the other one.
+
+   Both counters live in memory, so a serverless instance that gets
+   recycled forgets. That makes them a brake, not a wall — the wall
+   is the spend limit on the account itself.
+   --------------------------------------------------------------- */
+const PER_VISITOR_LIMIT = 5;
+const PER_VISITOR_WINDOW_MS = 60 * 60 * 1000;
+const DAILY_LIMIT = 60;
+
 type Report = { url: string; contacts: Contacts; research: Research };
 
 const cache = new Map<string, { at: number; report: Report }>();
+const visits = new Map<string, number[]>();
+const spentToday: { day: string; count: number } = { day: "", count: 0 };
+
+function visitorKey(request: Request): string {
+  return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+}
+
+function overVisitorLimit(key: string): boolean {
+  const now = Date.now();
+  const recent = (visits.get(key) ?? []).filter((t) => now - t < PER_VISITOR_WINDOW_MS);
+  visits.set(key, recent);
+  if (recent.length >= PER_VISITOR_LIMIT) return true;
+  recent.push(now);
+  return false;
+}
+
+function overDailyLimit(): boolean {
+  const today = new Date().toISOString().slice(0, 10);
+  if (spentToday.day !== today) {
+    spentToday.day = today;
+    spentToday.count = 0;
+  }
+  if (spentToday.count >= DAILY_LIMIT) return true;
+  spentToday.count += 1;
+  return false;
+}
 
 export async function POST(request: Request) {
   let body: Record<string, unknown>;
@@ -48,6 +95,29 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { error: "No API key is configured, so the marketing summary cannot be written." },
       { status: 503 },
+    );
+  }
+
+  /*
+   * Checked after the cache, on purpose. A repeat lookup of a domain
+   * already read costs nothing, so it should not count against anyone.
+   */
+  if (overVisitorLimit(visitorKey(request))) {
+    return NextResponse.json(
+      {
+        error: `That is ${PER_VISITOR_LIMIT} lookups this hour, which is the limit. Each one reads a live site and costs real money, so it is capped. Try again a little later.`,
+      },
+      { status: 429 },
+    );
+  }
+
+  if (overDailyLimit()) {
+    return NextResponse.json(
+      {
+        error:
+          "This site has hit its lookups for today. It runs on one person's API credit, so there is a daily ceiling. Try tomorrow.",
+      },
+      { status: 429 },
     );
   }
 
