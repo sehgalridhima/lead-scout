@@ -1,26 +1,85 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* ---------------------------------------------------------------
+   DESIGN TOKENS
+--------------------------------------------------------------- */
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+:root {
+  --background: #fbfaf8;
+  --surface: #ffffff;
+  --surface-2: #f3f1ec;
+  --foreground: #16150f;
+  --muted: #6d675b;
+  --border: #e6e2d8;
+
+  --accent: #1d4ed8;
+  --accent-soft: #e6ecfd;
+  --accent-contrast: #ffffff;
+
+  --good: #12684a;
+  --good-soft: #e3f2e9;
+  --warn: #9a5b00;
+  --warn-soft: #fdf3e2;
+
+  --lift: 0 1px 2px rgba(22, 21, 15, 0.04), 0 4px 12px rgba(22, 21, 15, 0.04);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #0b0b0a;
+    --surface: #141513;
+    --surface-2: #1c1e1b;
+    --foreground: #f2f1ec;
+    --muted: #9d9a90;
+    --border: #2a2c28;
+
+    --accent: #93b4fd;
+    --accent-soft: #14203a;
+    --accent-contrast: #0a1020;
+
+    --good: #4ade9a;
+    --good-soft: #10241a;
+    --warn: #f2b45c;
+    --warn-soft: #2a1f0d;
+
+    --lift: 0 1px 2px rgba(0, 0, 0, 0.4);
   }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-contrast: var(--accent-contrast);
+  --color-good: var(--good);
+  --color-good-soft: var(--good-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.animate-rise {
+  animation: rise 0.28s ease-out both;
 }
