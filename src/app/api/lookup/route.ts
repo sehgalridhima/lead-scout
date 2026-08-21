@@ -24,14 +24,25 @@ import { canonicalOrigin, lookupCompany } from "@/lib/lookup";
  * people doing it once each, which the first would happily allow and
  * which costs exactly as much.
  *
- * The daily number is not a guess. A lookup costs roughly Rs 4, the
- * account behind this has a monthly ceiling, and Eloquence draws on
- * the same one — so this is set to what this site can spend per day
- * without being able to empty the month on its own.
+ * The daily number is arithmetic, not a feeling. A lookup costs about
+ * Rs 4, so eight a day is roughly Rs 960 a month — which fits inside
+ * the account's ceiling while leaving room for Eloquence, which draws
+ * on the same one. At the previous 25 this site could have spent
+ * Rs 3,000 a month by itself and stopped meal plans generating as a
+ * side effect.
+ *
+ * The two numbers are deliberately mismatched: a single person can do
+ * twenty in an hour, which is what working through a list feels like,
+ * but the site as a whole cannot do more than eight in a day. So the
+ * generous number is for the person actually using this, and the
+ * strict one is what protects the account.
+ *
+ * Raise DAILY_LIMIT if the ceiling goes up. It is the one number to
+ * change, and Rs 4 a lookup is the sum to do it with.
  */
 const PER_VISITOR_LIMIT = 20;
 const PER_VISITOR_WINDOW_MS = 60 * 60 * 1000;
-const DAILY_LIMIT = 25;
+const DAILY_LIMIT = 8;
 
 const visits = new Map<string, number[]>();
 const spentToday: { day: string; count: number } = { day: "", count: 0 };
